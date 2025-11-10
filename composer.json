@@ -1,0 +1,25 @@
+{
+    "name": "givanov95/typed-http",
+    "description": "A typed HTTP request/response library for PHP",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Georgi Ivanov",
+            "email": "joroz95@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": "^8.2",
+        "guzzlehttp/guzzle": "^7.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "Givanov95\\TypedHttp\\": "src/TypedHttp/"
+        }
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "dev-master"
+    }
+}

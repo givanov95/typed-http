@@ -9,11 +9,11 @@ use Givanov95\TypedHttp\Requests\Enums\ContentType;
 use Givanov95\TypedHttp\Requests\Enums\ExpectedResponseFormat;
 use Givanov95\TypedHttp\Requests\Enums\HttpMethod;
 use Exception;
+use Givanov95\TypedHttp\Requests\Exceptions\RequestException;
+use Givanov95\TypedHttp\Responses\ResponseParser;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request as Psr7Request;
 use Psr\Http\Message\StreamInterface;
-use RuntimeException;
-use TypedHttp\ResponseParser;
 
 abstract class Request
 {
@@ -110,7 +110,7 @@ abstract class Request
                 ->wait();
 
             if ($response->getStatusCode() >= 400) {
-                throw new RuntimeException('HTTP error: ' . $response->getStatusCode());
+                throw new RequestException('HTTP error: ' . $response->getStatusCode());
             }
 
             $responseBody = $response->getBody();
@@ -119,7 +119,7 @@ abstract class Request
 
             return $this;
         } catch (Exception $e) {
-            throw new RuntimeException('Request failed: ' . $e->getMessage(), 0, $e);
+            throw new RequestException('Request failed: ' . $e->getMessage(), 0, $e);
         }
     }
 

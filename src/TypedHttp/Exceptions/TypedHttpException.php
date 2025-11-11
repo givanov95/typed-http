@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedHttp\Exceptions;
+namespace Givanov95\TypedHttp\Exceptions;
 
 use Exception;
 

@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace TypedHttp\Exceptions;
+namespace Givanov95\TypedHttp\Requests\Exceptions;
 
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
+use Givanov95\TypedHttp\Exceptions\TypedHttpException;
 
-class ResponseException extends TypedHttpException
+class RequestException extends TypedHttpException
 {
     private ?ResponseInterface $response;
 

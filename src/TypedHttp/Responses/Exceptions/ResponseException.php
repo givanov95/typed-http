@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedHttp\Exceptions;
+namespace Givanov95\TypedHttp\Responses\Exceptions;
 
+use Givanov95\TypedHttp\Exceptions\TypedHttpException;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
 

@@ -34,13 +34,6 @@ abstract class Request
     abstract public function getUrl(): Url;
 
     /**
-     * Request body.
-     *
-     * @return array
-     */
-    abstract public function getRequestParams(): array;
-
-    /**
      * Request url.
      *
      * @return AuthenticatorInterface
@@ -87,6 +80,25 @@ abstract class Request
         $this->client = new Client();
         $this->options = $options ?? new Options();
         $this->executedRequest = false;
+    }
+
+    private function getRequestParams()
+    {
+        $reflection = new \ReflectionObject($this);
+        $props = $reflection->getProperties(\ReflectionProperty::IS_PUBLIC);
+
+        foreach ($props as $prop) {
+            // Only include properties declared in the child class (not inherited)
+            if ($prop->getDeclaringClass()->getName() === get_class($this)) {
+                $name = $prop->getName();
+                $params[$name] = $this->$name;
+            }
+        }
+
+        return array_filter(
+            $params,
+            fn ($value) => $value !== null
+        );
     }
 
     public function executeRequest()

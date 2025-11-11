@@ -10,6 +10,9 @@ TypedHttp is a typed PHP HTTP request/response library designed to simplify buil
 - Clear and informative exception handling  
 - Easily extendable for custom API integrations  
 
+Request parameters are automatically gathered from the **public properties declared in your extending request class**. You simply declare the parameters as public properties in your class, and the library handles collecting and sending them with your request, keeping your code clean and simple.
+
+
 ## Installation
 
 ```bash
@@ -21,28 +24,31 @@ use Givanov95\TypedHttp\Requests\Authorization\AuthenticatorInterface;
 
 class MyRequest extends Request implements BasicAuthInterface
 {
-    private BasicAuthAuthenticator $authenticator;
+    // Required param for the request
+    public string $param1 = null;
 
-    public function __construct()
+    // Optional param for the request
+    public ?int $param2 = null;
+
+    public function __construct(
+        ?string $param1 = null,
+        ?int $param2 = null
+    )
     {
         parent::__construct();
 
-        $this->authenticator = new BasicAuthAuthenticator('username', 'password');
+        $this->param1 = $param1;
+        $this->param2 = $param2;
     }
 
     public function getAuthenticator(): BasicAuthAuthenticator
     {
-        return $this->authenticator;
+        return new BasicAuthAuthenticator('username', 'password');
     }
 
     public function getUrl(): Url
     {
         return new Url('https://api.example.com/data');
-    }
-
-    public function getRequestParams(): array
-    {
-        return ['param1' => 'value1'];
     }
 
     protected function getHttpMethodType(): HttpMethod
@@ -61,7 +67,8 @@ class MyRequest extends Request implements BasicAuthInterface
     }
 }
 
-$request = new MyRequest();
+// Params are set via public properties declared in your extending Request class
+$request = new MyRequest(param1: 'value1', param2: 42);
 $response = $request->executeRequest();
 $data = $request->getParsedBody();
 

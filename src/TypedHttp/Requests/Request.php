@@ -34,11 +34,11 @@ abstract class Request
     abstract public function getUrl(): Url;
 
     /**
-     * Request url.
+     * Request authenticator.
      *
-     * @return AuthenticatorInterface
+     * @return ?AuthenticatorInterface
      */
-    abstract public function getAuthenticator(): AuthenticatorInterface;
+    abstract public function getAuthenticator(): ?AuthenticatorInterface;
 
     /**
      * Determine if the request should be JSON or form-data.
@@ -129,12 +129,14 @@ abstract class Request
         $url = $this->getUrl()->toString();
         $requestParams = $this->getRequestParams();
         $contentType = $this->getContentType();
+        $authHeaders = $this->getAuthenticator()?->getAuthHeaders() ?? [];
 
         $headers = [
             ...$this->getHeaders(),
-            ...$this->getAuthenticator()->getAuthHeaders(),
+            ...$authHeaders,
             'Accept' => $this->getExpectedResponseFormat()->value,
         ];
+
 
         $encodedParams = $contentType->encodeBody($requestParams);
 

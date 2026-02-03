@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Givanov95\TypedHttp\Requests;
 
+use Exception;
 use Givanov95\TypedHttp\Requests\Authorization\AuthenticatorInterface;
+use Givanov95\TypedHttp\Requests\Authorization\Certificate\CertificateAuthenticator;
 use Givanov95\TypedHttp\Requests\Enums\ContentType;
 use Givanov95\TypedHttp\Requests\Enums\ExpectedResponseFormat;
 use Givanov95\TypedHttp\Requests\Enums\HttpMethod;
-use Exception;
+use Givanov95\TypedHttp\Requests\Exceptions\RequestException;
+use Givanov95\TypedHttp\Responses\ResponseParser;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request as Psr7Request;
 use Psr\Http\Message\StreamInterface;
-use RuntimeException;
-use TypedHttp\ResponseParser;
+use ReflectionObject;
+use ReflectionProperty;
 
 abstract class Request
 {
@@ -34,11 +37,11 @@ abstract class Request
     abstract public function getUrl(): Url;
 
     /**
-     * Request url.
+     * Request authenticator.
      *
-     * @return AuthenticatorInterface
+     * @return ?AuthenticatorInterface
      */
-    abstract public function getAuthenticator(): AuthenticatorInterface;
+    abstract public function getAuthenticator(): ?AuthenticatorInterface;
 
     /**
      * Determine if the request should be JSON or form-data.
@@ -84,14 +87,14 @@ abstract class Request
 
     private function getRequestParams()
     {
-        $reflection = new \ReflectionObject($this);
-        $props = $reflection->getProperties(\ReflectionProperty::IS_PUBLIC);
+        $reflection = new ReflectionObject($this);
+        $props = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
         foreach ($props as $prop) {
             // Only include properties declared in the child class (not inherited)
-            if ($prop->getDeclaringClass()->getName() === get_class($this)) {
+            if ($prop->getDeclaringClass()->getName() === static::class) {
                 $name = $prop->getName();
-                $params[$name] = $this->$name;
+                $params[$name] = $this->{$name};
             }
         }
 
@@ -105,12 +108,26 @@ abstract class Request
     {
         try {
             $request = $this->getClientRequest();
+            $clientOptions = $this->getClientOptions();
+
+            $authenticator = $this->getAuthenticator();
+            $clientOptions = [
+                ...$this->getClientOptions(),
+            ];
+
+            if ($authenticator instanceof CertificateAuthenticator) {
+                $clientOptions = [
+                    ...$clientOptions,
+                    ...$authenticator?->getClientOptions(),
+                ];
+            }
+
             $response = $this->client
-                ->sendAsync($request)
+                ->sendAsync($request, $clientOptions)
                 ->wait();
 
             if ($response->getStatusCode() >= 400) {
-                throw new RuntimeException('HTTP error: ' . $response->getStatusCode());
+                throw new RequestException('HTTP error: ' . $response->getStatusCode());
             }
 
             $responseBody = $response->getBody();
@@ -119,7 +136,7 @@ abstract class Request
 
             return $this;
         } catch (Exception $e) {
-            throw new RuntimeException('Request failed: ' . $e->getMessage(), 0, $e);
+            throw new RequestException('Request failed: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -129,10 +146,12 @@ abstract class Request
         $url = $this->getUrl()->toString();
         $requestParams = $this->getRequestParams();
         $contentType = $this->getContentType();
+        $authenticator = $this->getAuthenticator();
+        $authHeaders = $authenticator?->getAuthHeaders() ?? [];
 
         $headers = [
             ...$this->getHeaders(),
-            ...$this->getAuthenticator()->getAuthHeaders(),
+            ...$authHeaders,
             'Accept' => $this->getExpectedResponseFormat()->value,
         ];
 
@@ -159,7 +178,22 @@ abstract class Request
         );
     }
 
+    /**
+     * Get the client headers.
+     *
+     * @return array
+     */
     public function getHeaders(): array
+    {
+        return [];
+    }
+
+    /**
+     * Get the client options.
+     *
+     * @return array
+     */
+    public function getClientOptions(): array
     {
         return [];
     }

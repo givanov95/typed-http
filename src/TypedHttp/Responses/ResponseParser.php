@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedHttp;
+namespace Givanov95\TypedHttp\Responses;
 
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;

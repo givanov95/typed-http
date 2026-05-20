@@ -12,6 +12,7 @@ $finder = Finder::create()
     ->ignoreVCS(true);
 
 return (new Config())
+    ->setRiskyAllowed(true)
     ->setRules([
         '@PSR12' => true,
         'strict_param' => true,
@@ -20,7 +21,6 @@ return (new Config())
         'ordered_imports' => ['sort_algorithm' => 'alpha'],
         'array_syntax' => ['syntax' => 'short'],
         'binary_operator_spaces' => ['operators' => ['=>' => 'align_single_space']],
-        'line_ending' => "\n",
         'no_trailing_whitespace' => true,
         'single_blank_line_at_eof' => true,
         'blank_line_after_namespace' => true,

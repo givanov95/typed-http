@@ -75,8 +75,7 @@ abstract class Request
     protected bool $executedRequest = false;
 
     /**
-     * @param  ?Options         $options
-     * @throws RuntimeException if authentication credentials are invalid, token retrieval fails, or the UPS API base URL is not set
+     * @param ?Options $options
      */
     public function __construct(?Options $options = null)
     {
@@ -85,10 +84,11 @@ abstract class Request
         $this->executedRequest = false;
     }
 
-    private function getRequestParams()
+    private function getRequestParams(): array
     {
         $reflection = new ReflectionObject($this);
         $props = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
+        $params = [];
 
         foreach ($props as $prop) {
             // Only include properties declared in the child class (not inherited)
@@ -104,21 +104,17 @@ abstract class Request
         );
     }
 
-    public function executeRequest()
+    public function executeRequest(): self
     {
         try {
             $request = $this->getClientRequest();
-            $clientOptions = $this->getClientOptions();
-
             $authenticator = $this->getAuthenticator();
-            $clientOptions = [
-                ...$this->getClientOptions(),
-            ];
+            $clientOptions = $this->getClientOptions();
 
             if ($authenticator instanceof CertificateAuthenticator) {
                 $clientOptions = [
                     ...$clientOptions,
-                    ...$authenticator?->getClientOptions(),
+                    ...$authenticator->getClientOptions(),
                 ];
             }
 
@@ -222,10 +218,9 @@ abstract class Request
     }
 
     /**
-     * @param  null|bool    $associative - When TRUE, returned objects will be converted into associative arrays
-     * @return object|array
+     * @param ?bool $associative When TRUE, returned objects will be converted into associative arrays
      */
-    public function getParsedBody(?bool $associative = false)
+    public function getParsedBody(?bool $associative = false): mixed
     {
         if (! $this->executedRequest) {
             $this->executeRequest();

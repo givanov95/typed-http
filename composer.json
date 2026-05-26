@@ -20,6 +20,12 @@
         }
     },
     "require-dev": {
-        "friendsofphp/php-cs-fixer": "dev-master"
+        "friendsofphp/php-cs-fixer": "dev-master",
+        "givanov95/laravel-git-hooks": "dev-main"
+    },
+    "config": {
+        "allow-plugins": {
+            "givanov95/laravel-git-hooks": true
+        }
     }
 }

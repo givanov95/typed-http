@@ -1,5 +1,23 @@
 # CLAUDE.md
 
+## Работен флоу (gws@claude-flow)
+
+Работният флоу (issue-та, PR-и) идва от плъгина `gws@claude-flow` — `/gws:issue <N>`. Комуникация с потребителя: български. Код, commit-и и PR-и: английски.
+
+### Branch-ове
+- Базов branch: `main`. Issue branch-ове: `fix|feat|chore/N-kratko-ime` от него, PR към него, squash merge.
+- Issue-то се затваря с `Fixes #N` в тялото на commit-а (базовият branch е default — затваря се при merge на PR-а).
+
+### Deploy
+- Няма — проектът не се качва на сървър. `/gws:ship` не е приложим тук; доставката е merge в базовия branch.
+
+### Build и commit-и
+- Няма билд стъпка. Тестове: `vendor/bin/phpunit` (има `tests/SmokeTest.php`). Pre-commit hook от `givanov95/laravel-git-hooks` пуска проверки при commit.
+- Commit стил: Conventional Commits на английски (`fix(scope): ...`).
+
+### GitHub
+- Нови issue-та се добавят в project board „gws".
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project

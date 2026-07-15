@@ -13,7 +13,7 @@ class ResponseException extends TypedHttpException
     private ?ResponseInterface $response;
 
     public function __construct(
-        string $message = "Response error",
+        string $message = 'Response error',
         int $code = 0,
         ?Throwable $previous = null,
         ?ResponseInterface $response = null

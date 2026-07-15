@@ -42,9 +42,9 @@ final readonly class CertificateAuthenticator implements AuthenticatorInterface
     public function getClientOptions(): array
     {
         return [
-            'cert' => [$this->certificatePath, ''],
+            'cert'    => [$this->certificatePath, ''],
             'ssl_key' => [$this->privateKeyPath, $this->privateKeyPass ?? ''],
-            'verify' => $this->caBundlePath,
+            'verify'  => $this->caBundlePath,
         ];
     }
 }

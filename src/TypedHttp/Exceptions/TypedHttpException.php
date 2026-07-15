@@ -13,7 +13,7 @@ class TypedHttpException extends Exception
     private array $details = [];
 
     public function __construct(
-        string $message = "",
+        string $message = '',
         int $code = 0,
         ?Exception $previous = null,
         ?string $context = null,
@@ -50,10 +50,10 @@ class TypedHttpException extends Exception
     public function toArray(): array
     {
         return [
-            'message' => $this->getMessage(),
-            'code' => $this->getCode(),
-            'context' => $this->context,
-            'details' => $this->details,
+            'message'  => $this->getMessage(),
+            'code'     => $this->getCode(),
+            'context'  => $this->context,
+            'details'  => $this->details,
             'previous' => $this->getPrevious() ? $this->getPrevious()->getMessage() : null,
         ];
     }

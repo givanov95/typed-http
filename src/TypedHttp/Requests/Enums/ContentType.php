@@ -19,10 +19,10 @@ enum ContentType: string
     public function encodeBody(array $body): string|array
     {
         return match ($this) {
-            self::JSON => json_encode($body),
-            self::FORM => $body,
+            self::JSON            => json_encode($body),
+            self::FORM            => $body,
             self::FORM_URLENCODED => http_build_query($body),
-            self::XML => $this->arrayToXml($body),
+            self::XML             => $this->arrayToXml($body),
             self::HTML, self::TEXT => implode("\n", $body),
             self::CSV => $this->arrayToCsv($body),
         };

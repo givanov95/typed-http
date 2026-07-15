@@ -24,9 +24,9 @@ final class ResponseParser
 
         return match ($expectedContentType) {
             'application/json' => json_decode($content, $associative, flags: \JSON_THROW_ON_ERROR),
-            'application/xml' => self::parseXml($content, $associative),
-            'text/plain' => $content,
-            default => throw new RuntimeException("Unsupported response format: {$expectedContentType}")
+            'application/xml'  => self::parseXml($content, $associative),
+            'text/plain'       => $content,
+            default            => throw new RuntimeException("Unsupported response format: {$expectedContentType}")
         };
     }
 

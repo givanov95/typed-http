@@ -20,7 +20,7 @@ final readonly class BearerTokenAuthenticator implements AuthenticatorInterface
      */
     public function getAuthHeaders(): array
     {
-         return ['Authorization' => 'Bearer ' . $this->accessToken];
+        return ['Authorization' => 'Bearer ' . $this->accessToken];
     }
 
     /**

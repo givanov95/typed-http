@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Givanov95\TypedHttp\Requests\Exceptions;
 
+use Givanov95\TypedHttp\Exceptions\TypedHttpException;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
-use Givanov95\TypedHttp\Exceptions\TypedHttpException;
 
 class RequestException extends TypedHttpException
 {
     private ?ResponseInterface $response;
 
     public function __construct(
-        string $message = "Response error",
+        string $message = 'Response error',
         int $code = 0,
         ?Throwable $previous = null,
         ?ResponseInterface $response = null

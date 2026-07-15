@@ -4,3 +4,4 @@
 /.vscode/
 composer.lock
 .claude/settings.local.json
+.phpunit.result.cache

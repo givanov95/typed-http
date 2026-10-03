@@ -8,7 +8,9 @@ use Givanov95\TypedHttp\Exceptions\NetworkException;
 use Givanov95\TypedHttp\Testing\MockClient;
 use Givanov95\TypedHttp\Testing\MockResponse;
 use Givanov95\TypedHttp\Transport\RetryClient;
+use GuzzleHttp\Psr7\NoSeekStream;
 use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Utils;
 use PHPUnit\Framework\TestCase;
 
 final class RetryClientTest extends TestCase
@@ -88,6 +90,29 @@ final class RetryClientTest extends TestCase
         $this->retry($mock)->sendRequest(new Request('GET', 'https://x.test'));
 
         $this->assertSame([2000, 30000], $this->sleeps);
+    }
+
+    // The second attempt would send an already read body: empty or cut short.
+    public function test_a_body_that_cannot_be_rewound_is_not_repeated(): void
+    {
+        $mock = MockClient::make()->push(MockResponse::empty(503), MockResponse::empty(200));
+        $request = new Request('PUT', 'https://x.test', [], new NoSeekStream(Utils::streamFor('data')));
+
+        $response = $this->retry($mock)->sendRequest($request);
+
+        $this->assertSame(503, $response->getStatusCode());
+        $mock->assertSentCount(1);
+    }
+
+    public function test_backoff_is_capped_and_survives_many_attempts(): void
+    {
+        $mock = MockClient::make()->push(MockResponse::empty(503));
+
+        $this->retry($mock, times: 70)->sendRequest(new Request('GET', 'https://x.test'));
+
+        $this->assertCount(70, $this->sleeps);
+        $this->assertSame(30_000, max($this->sleeps));
+        $this->assertSame([100, 200, 400], array_slice($this->sleeps, 0, 3));
     }
 
     public function test_a_non_retryable_status_is_returned_immediately(): void

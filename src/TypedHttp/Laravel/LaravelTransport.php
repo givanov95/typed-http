@@ -17,34 +17,39 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class LaravelTransport implements Transport
 {
+    /** @var array<string,mixed> */
+    private array $requestOptions = [];
+
     /**
-     * @param array<string,mixed> $options
+     * @param array<string,mixed> $options Fixed for this transport; they win over the options the connector passes per request
      */
-    public function __construct(private readonly Factory $http, private array $options = [])
+    public function __construct(private readonly Factory $http, private readonly array $options = [])
     {
     }
 
     public function withOptions(array $options): static
     {
         $clone = clone $this;
-        $clone->options = [...$this->options, ...$options];
+        $clone->requestOptions = [...$this->requestOptions, ...$options];
 
         return $clone;
     }
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        $pending = $this->http->withOptions($this->options);
+        $pending = $this->http->withOptions([...$this->requestOptions, ...$this->options]);
 
         $headers = [];
         foreach (array_keys($request->getHeaders()) as $name) {
             $headers[$name] = $request->getHeaderLine($name);
         }
 
-        $content = (string) $request->getBody();
+        $body = $request->getBody();
 
-        if ($content !== '' || $request->hasHeader('Content-Type')) {
-            $pending->withBody($content, $request->getHeaderLine('Content-Type'));
+        // A null size (unknown length) means there is something to send, so only a known 0 counts as no body.
+        if ($body->getSize() !== 0 || $request->hasHeader('Content-Type')) {
+            // The stream goes through as it is: casting it to a string would hold a whole upload in memory.
+            $pending->withBody($body, $request->getHeaderLine('Content-Type'));
             $headers = array_filter($headers, fn (string $name) => strtolower($name) !== 'content-type', \ARRAY_FILTER_USE_KEY);
         }
 

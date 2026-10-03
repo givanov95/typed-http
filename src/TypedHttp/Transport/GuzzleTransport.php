@@ -7,8 +7,7 @@ namespace Givanov95\TypedHttp\Transport;
 use Givanov95\TypedHttp\Contracts\Transport;
 use Givanov95\TypedHttp\Exceptions\NetworkException;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
-use Psr\Http\Client\ClientExceptionInterface;
+use GuzzleHttp\Exception\RequestException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
@@ -19,10 +18,13 @@ final class GuzzleTransport implements Transport
 {
     private readonly Client $client;
 
+    /** @var array<string,mixed> */
+    private array $requestOptions = [];
+
     /**
-     * @param array<string,mixed> $options
+     * @param array<string,mixed> $options Fixed for this transport; they win over the options the connector passes per request
      */
-    public function __construct(?Client $client = null, private array $options = [])
+    public function __construct(?Client $client = null, private readonly array $options = [])
     {
         $this->client = $client ?? new Client();
     }
@@ -30,7 +32,7 @@ final class GuzzleTransport implements Transport
     public function withOptions(array $options): static
     {
         $clone = clone $this;
-        $clone->options = [...$this->options, ...$options];
+        $clone->requestOptions = [...$this->requestOptions, ...$options];
 
         return $clone;
     }
@@ -38,9 +40,11 @@ final class GuzzleTransport implements Transport
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         try {
-            return $this->client->send($request, [...$this->options, 'http_errors' => false]);
-        } catch (GuzzleException $e) {
-            if ($e instanceof ClientExceptionInterface) {
+            return $this->client->send($request, [...$this->requestOptions, ...$this->options, 'http_errors' => false]);
+        } catch (RequestException $e) {
+            // Guzzle only turns a few cURL errors into ConnectException; a reset connection or a failed receive
+            // arrives here without a response and is just as much a network error.
+            if ($e->hasResponse()) {
                 throw $e;
             }
 

@@ -5,25 +5,39 @@ declare(strict_types=1);
 namespace Givanov95\TypedHttp\Tests\Laravel;
 
 use Givanov95\TypedHttp\Auth\BasicAuth;
+use Givanov95\TypedHttp\Connector;
 use Givanov95\TypedHttp\Contracts\Transport;
+use Givanov95\TypedHttp\Enums\BodyFormat;
+use Givanov95\TypedHttp\Enums\HttpMethod;
 use Givanov95\TypedHttp\Exceptions\ConnectionException;
 use Givanov95\TypedHttp\Exceptions\RequestException;
 use Givanov95\TypedHttp\Laravel\LaravelTransport;
 use Givanov95\TypedHttp\Laravel\TypedHttpServiceProvider;
+use Givanov95\TypedHttp\Request;
 use Givanov95\TypedHttp\Tests\Fixtures\ApiConnector;
 use Givanov95\TypedHttp\Tests\Fixtures\FindSiteRequest;
 use Givanov95\TypedHttp\Tests\Fixtures\ListCitiesRequest;
 use Givanov95\TypedHttp\Transport\RetryClient;
 use Illuminate\Http\Client\ConnectionException as LaravelConnectionException;
-use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Http\Client\StrayRequestException;
 use Illuminate\Support\Facades\Http;
 use Orchestra\Testbench\TestCase;
+use SplFileInfo;
 
 final class LaravelBridgeTest extends TestCase
 {
     protected function getPackageProviders($app): array
     {
         return [TypedHttpServiceProvider::class];
+    }
+
+    protected function tearDown(): void
+    {
+        // The resolver is static: leave nothing behind for tests that run without the bridge.
+        Connector::useDefaultClient(null);
+
+        parent::tearDown();
     }
 
     public function test_connectors_use_laravels_http_client_by_default(): void
@@ -35,7 +49,7 @@ final class LaravelBridgeTest extends TestCase
         $response = (new ApiConnector(new BasicAuth('u', 'p')))->send(new FindSiteRequest(name: 'Varna'));
 
         $this->assertSame([1], $response->json('sites'));
-        Http::assertSent(function (Request $request) {
+        Http::assertSent(function (HttpRequest $request) {
             return $request->url() === 'https://api.test/v1/location/site/'
                 && $request->method() === 'POST'
                 && $request->data()['name'] === 'Varna'
@@ -52,7 +66,7 @@ final class LaravelBridgeTest extends TestCase
 
         (new ApiConnector())->send(new ListCitiesRequest('BG', page: 2));
 
-        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.test/v1/cities?countryCode=BG&page=2'
+        Http::assertSent(fn (HttpRequest $request) => $request->url() === 'https://api.test/v1/cities?countryCode=BG&page=2'
             && $request->method() === 'GET'
             && ! $request->hasHeader('Content-Type'));
     }
@@ -60,7 +74,7 @@ final class LaravelBridgeTest extends TestCase
     public function test_timeouts_reach_the_laravel_client(): void
     {
         $seen = [];
-        Http::fake(function (Request $request, array $options) use (&$seen) {
+        Http::fake(function (HttpRequest $request, array $options) use (&$seen) {
             $seen = $options;
 
             return Http::response([]);
@@ -100,9 +114,51 @@ final class LaravelBridgeTest extends TestCase
         Http::preventStrayRequests();
         Http::fake(['other.test/*' => Http::response()]);
 
-        $this->expectException(\RuntimeException::class);
+        // A ConnectionException is a RuntimeException too, so only this type proves the request went through Http::.
+        $this->expectException(StrayRequestException::class);
 
         (new ApiConnector())->send(new FindSiteRequest());
+    }
+
+    public function test_a_multipart_upload_is_passed_to_laravel_as_a_stream(): void
+    {
+        Http::fake();
+        $path = tempnam(sys_get_temp_dir(), 'typed-http');
+        file_put_contents($path, 'FILEDATA');
+
+        $request = new class ($path) extends Request {
+            public SplFileInfo $file;
+
+            public function __construct(string $path)
+            {
+                $this->file = new SplFileInfo($path);
+            }
+
+            public function method(): HttpMethod
+            {
+                return HttpMethod::POST;
+            }
+
+            public function endpoint(): string
+            {
+                return 'upload';
+            }
+
+            public function bodyFormat(): BodyFormat
+            {
+                return BodyFormat::Multipart;
+            }
+        };
+
+        try {
+            (new ApiConnector())->send($request);
+        } finally {
+            unlink($path);
+        }
+
+        Http::assertSent(fn (HttpRequest $sent) => str_starts_with($sent->header('Content-Type')[0], 'multipart/form-data; boundary=')
+            && str_contains($sent->body(), 'filename="' . basename($path) . '"')
+            && str_contains($sent->body(), 'FILEDATA'));
     }
 
     public function test_retry_is_off_by_default(): void

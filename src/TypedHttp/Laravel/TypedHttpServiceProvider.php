@@ -7,6 +7,7 @@ namespace Givanov95\TypedHttp\Laravel;
 use Givanov95\TypedHttp\Connector;
 use Givanov95\TypedHttp\Contracts\Transport;
 use Givanov95\TypedHttp\Transport\RetryClient;
+use Illuminate\Container\Container;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\ServiceProvider;
 
@@ -40,6 +41,8 @@ final class TypedHttpServiceProvider extends ServiceProvider
     {
         $this->publishes([__DIR__ . '/../../../config/typed-http.php' => $this->app->configPath('typed-http.php')], 'typed-http-config');
 
-        Connector::useDefaultClient(fn () => $this->app->make(Transport::class));
+        // Static on purpose: the closure outlives this provider, so it must not hold the application. The global container
+        // is the current one (Octane swaps it per request, tests swap it per test).
+        Connector::useDefaultClient(static fn () => Container::getInstance()->make(Transport::class));
     }
 }

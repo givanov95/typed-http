@@ -15,12 +15,13 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * Repeats failed requests (network errors and 429/502/503/504) with exponential backoff.
+ * Repeats failed requests (network errors and 429/502/503/504) with exponential backoff, a single pause is at most 30 s.
  * Only idempotent methods are repeated unless `$retryUnsafe` is set: a repeated POST can create a duplicate.
+ * A body that cannot be rewound is never repeated: the second attempt would send it empty or cut short.
  */
 final class RetryClient implements RequestAware, Transport
 {
-    private const MAX_RETRY_AFTER_MS = 30_000;
+    private const MAX_DELAY_MS = 30_000;
 
     private readonly Closure $sleep;
 
@@ -88,6 +89,10 @@ final class RetryClient implements RequestAware, Transport
 
     private function mayRepeat(RequestInterface $request): bool
     {
+        if (! $request->getBody()->isSeekable()) {
+            return false;
+        }
+
         if ($this->retryUnsafe) {
             return true;
         }
@@ -97,13 +102,14 @@ final class RetryClient implements RequestAware, Transport
 
     private function backoff(int $attempt): int
     {
-        return $this->delayMs * (2 ** $attempt);
+        // The exponent is capped as well: 2 ** 64 is a float and would not fit the int return type.
+        return (int) min($this->delayMs * (2 ** min($attempt, 20)), self::MAX_DELAY_MS);
     }
 
     private function retryAfter(ResponseInterface $response): ?int
     {
         $header = $response->getHeaderLine('Retry-After');
 
-        return ctype_digit($header) ? min((int) $header * 1000, self::MAX_RETRY_AFTER_MS) : null;
+        return ctype_digit($header) ? min((int) $header * 1000, self::MAX_DELAY_MS) : null;
     }
 }

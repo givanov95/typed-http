@@ -1,6 +1,6 @@
 {
     "name": "givanov95/typed-http",
-    "description": "A typed HTTP request/response library for PHP",
+    "description": "Typed, object-oriented HTTP requests for PHP (PSR-18) with an optional Laravel bridge",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -9,24 +9,45 @@
             "email": "joroz95@gmail.com"
         }
     ],
-    "minimum-stability": "dev",
     "require": {
         "php": "^8.2",
-        "guzzlehttp/guzzle": "^7.9"
+        "guzzlehttp/guzzle": "^7.9",
+        "guzzlehttp/psr7": "^2.6",
+        "psr/http-client": "^1.0",
+        "psr/http-message": "^1.1 || ^2.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "givanov95/laravel-git-hooks": "^1.1",
+        "illuminate/http": "^11.0 || ^12.0 || ^13.0",
+        "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
+        "phpunit/phpunit": "^11.0 || ^12.0"
+    },
+    "suggest": {
+        "illuminate/http": "Required for the Laravel bridge (requests go through Http:: so Http::fake() works)"
     },
     "autoload": {
         "psr-4": {
             "Givanov95\\TypedHttp\\": "src/TypedHttp/"
         }
     },
-    "require-dev": {
-        "friendsofphp/php-cs-fixer": "dev-master",
-        "givanov95/laravel-git-hooks": "^1.1",
-        "phpunit/phpunit": "^11.0"
+    "autoload-dev": {
+        "psr-4": {
+            "Givanov95\\TypedHttp\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Givanov95\\TypedHttp\\Laravel\\TypedHttpServiceProvider"
+            ]
+        }
     },
     "config": {
         "allow-plugins": {
             "givanov95/laravel-git-hooks": true
         }
-    }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
 }

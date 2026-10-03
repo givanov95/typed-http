@@ -10,6 +10,7 @@ use Givanov95\TypedHttp\Testing\MockResponse;
 use Givanov95\TypedHttp\Tests\Fixtures\ApiConnector;
 use Givanov95\TypedHttp\Tests\Fixtures\FindSiteRequest;
 use Givanov95\TypedHttp\Tests\Fixtures\ListCitiesRequest;
+use Givanov95\TypedHttp\Transport\RetryClient;
 use LogicException;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
@@ -58,6 +59,21 @@ final class MockClientTest extends TestCase
         $this->expectExceptionMessage('POST https://api.test/v1/location/site/');
 
         (new ApiConnector())->withClient(MockClient::make())->send(new FindSiteRequest());
+    }
+
+    // RetryClient announces the request once and sends the same PSR request again: routes by class must still match.
+    public function test_the_typed_request_survives_repeated_sends_behind_retry_client(): void
+    {
+        $mock = MockClient::make()->on(FindSiteRequest::class, MockResponse::empty(503), MockResponse::json(['ok' => 1]));
+        $retry = new RetryClient($mock, times: 2, retryUnsafe: true, sleep: static function (int $ms): void {
+        });
+
+        $response = (new ApiConnector())->withClient($retry)->send(new FindSiteRequest());
+
+        $this->assertSame(['ok' => 1], $response->json());
+        $mock->assertSentCount(2);
+        $typed = array_filter($mock->sent(), fn (array $sent) => $sent['request'] instanceof FindSiteRequest);
+        $this->assertCount(2, $typed);
     }
 
     public function test_assertions(): void

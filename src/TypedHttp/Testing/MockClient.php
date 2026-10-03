@@ -13,6 +13,7 @@ use LogicException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
+use WeakMap;
 
 /**
  * A client for tests: answers with prepared responses and records what was sent. Never touches the network.
@@ -37,6 +38,9 @@ final class MockClient implements RequestAware, Transport
     private array $options = [];
 
     private ?Request $current = null;
+
+    /** @var null|WeakMap<RequestInterface, Request> the typed request behind a PSR request, kept for repeated sends of the same object */
+    private ?WeakMap $typed = null;
 
     public static function make(): self
     {
@@ -73,8 +77,15 @@ final class MockClient implements RequestAware, Transport
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        $typed = $this->current;
-        $this->current = null;
+        $this->typed ??= new WeakMap();
+
+        if ($this->current !== null) {
+            $this->typed[$request] = $this->current;
+            $this->current = null;
+        }
+
+        // A decorator such as RetryClient announces the request once and sends the same object several times.
+        $typed = $this->typed[$request] ?? null;
         $this->sent[] = ['request' => $typed, 'psr' => $request, 'options' => $this->options];
 
         foreach ($this->routes as $index => $route) {

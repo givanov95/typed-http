@@ -12,7 +12,7 @@
 - Няма — проектът не се качва на сървър. `/gws:ship` не е приложим тук; доставката е merge в базовия branch.
 
 ### Build и commit-и
-- Няма билд стъпка. Тестове: `vendor/bin/phpunit` (има `tests/SmokeTest.php`). Pre-commit hook от `givanov95/laravel-git-hooks` пуска проверки при commit.
+- Няма билд стъпка. Тестове: `vendor/bin/phpunit`. Pre-commit hook от `givanov95/laravel-git-hooks` пуска php-cs-fixer и тестовете при commit.
 - Commit стил: Conventional Commits на английски (`fix(scope): ...`).
 
 ### GitHub
@@ -22,37 +22,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`givanov95/typed-http` — a PHP 8.2+ library that wraps Guzzle with typed, abstract `Request` classes. Consumers define a request as a subclass; the library handles parameter collection, content-type encoding, auth headers, and response parsing.
+`givanov95/typed-http` — v2: typed, object-oriented HTTP requests for PHP 8.2+. A `Connector` is one API (base URL, auth, timeouts, client), a `Request` subclass is one call (its public properties are the payload), `Response` reads the result. The core is plain PHP on PSR-18 (Guzzle is the default client); an optional Laravel bridge sends requests through `Http::`. Public docs: `README.md`, migration from 1.x: `UPGRADE.md`.
 
 ## Commands
 
 ```bash
-composer install                            # install deps
-vendor/bin/php-cs-fixer fix                 # apply code style (PSR-12 + rules in .php-cs.fixer.php)
-vendor/bin/php-cs-fixer fix --dry-run --diff  # check style without writing
+composer install
+vendor/bin/phpunit                              # core tests + Laravel bridge tests (orchestra/testbench)
+vendor/bin/php-cs-fixer fix                     # code style (rules in .php-cs-fixer.php), covers src/ and tests/
+vendor/bin/php-cs-fixer fix --dry-run --diff
 ```
 
-There is no test suite yet (README explicitly notes this).
+## Architecture (`src/TypedHttp/`)
 
-## Architecture
+- `Connector::send(Request)` builds the PSR-7 request (URL from `baseUrl()` + `endpoint()`, payload → query for GET/HEAD/OPTIONS or body otherwise, headers, `Accept`), applies the `Authenticator`, then sends it through the client. Status >= 400 → `RequestException` (see `shouldThrow()`), `ClientExceptionInterface` → `ConnectionException`.
+- `Request` — abstract: `method()`, `endpoint()`; optional `query()`, `headers()`, `bodyFormat()`, `accepts()`, `authenticator()`, `body()`, `createDto()`. `Support/Payload` collects public properties **including inherited ones** (skips null/uninitialized/static/`#[Ignore]`, honours `#[Field]`). `Support/BodyEncoder` encodes the body (`Enums/BodyFormat`).
+- Client: any PSR-18 `ClientInterface`. `Contracts/Transport` adds `withOptions()` (timeouts, `cert`, `ssl_key`, `verify` — Guzzle option names); the connector passes options only to `Transport`s. `Contracts/RequestAware` lets `Testing/MockClient` match by request class. Transports: `Transport/GuzzleTransport` (default, `http_errors` off), `Transport/RetryClient` (decorator; repeats only idempotent methods unless `retryUnsafe`), `Laravel/LaravelTransport`.
+- `Auth/`: `BasicAuth`, `BearerToken`, `Certificate` implement `Contracts/Authenticator` (`apply(RequestInterface)` + `options()`).
+- `Testing/MockClient` + `MockResponse`: prepared responses, recorded requests, `assert*` methods; no network.
+- `Laravel/TypedHttpServiceProvider` (auto-discovered via `composer.json` `extra.laravel`) binds `Transport` to `LaravelTransport` (wrapped in `RetryClient` when `typed-http.retry.times` > 0) and registers it with `Connector::useDefaultClient()`. `illuminate/*` is a dev dependency only; the core must not import `Illuminate\`.
+- Exceptions: `TypedHttpException` base; `RequestException` (has `Response`), `ConnectionException`, `ResponseException`, `NetworkException` (PSR-18 network error raised by transports).
 
-The library is built around a single inheritance pattern: subclass `Givanov95\TypedHttp\Requests\Request` and implement the abstract methods. The base class wires everything together.
+## Conventions
 
-### Request lifecycle (`src/TypedHttp/Requests/Request.php`)
-
-1. **Parameter collection** — `getRequestParams()` uses reflection to read **public properties declared on the child class only** (inherited properties are skipped via `getDeclaringClass()->getName() === get_class($this)`). `null` values are filtered out. This is how subclasses expose their request payload — there is no setter/builder API; properties *are* the payload.
-2. **Body encoding** — `ContentType::encodeBody()` dispatches by enum case (JSON → `json_encode`, FORM_URLENCODED → `http_build_query`, XML → `SimpleXMLElement`, CSV → `fputcsv`, etc.). For `GET`, the encoded params are appended as a query string; otherwise they go in the body and `Content-Type` is added.
-3. **Auth headers** — `getAuthenticator()` may return `null` (no headers added) or an `AuthenticatorInterface` implementation whose `getAuthHeaders(): array` is merged into the request. `CertificateAuthenticator` additionally exposes `getClientOptions()` for mTLS (cert, ssl_key, verify); `executeRequest()` merges these into the Guzzle client options when the authenticator is a `CertificateAuthenticator`.
-4. **Execution** — Guzzle `sendAsync()->wait()`. Any non-2xx/3xx status (`>= 400`) throws `RequestException`; all Guzzle exceptions are caught and re-wrapped as `RequestException`.
-5. **Response parsing** — `ResponseParser::parse()` matches on the `ExpectedResponseFormat` enum value (JSON, XML, plain text). `getParsedBody()` lazily calls `executeRequest()` if it hasn't run yet.
-
-### Authenticators (`src/TypedHttp/Requests/Authorization/`)
-
-Each auth method has a paired interface + authenticator class (e.g., `BasicAuthInterface` + `BasicAuthAuthenticator`). The interface is a marker for the request class to implement; the authenticator is what `getAuthenticator()` returns. Existing pairs: BasicAuth, BearerToken, Certificate. To add a new auth method, create both files under a new `Authorization/<Name>/` directory and implement `AuthenticatorInterface::getAuthHeaders()`.
-
-### Conventions
-
-- All files are `declare(strict_types=1)`.
-- Code style is PSR-12 with additional rules in `.php-cs.fixer.php` (aligned `=>`, single quotes, trailing commas in multiline arrays, ordered imports). Run the fixer before committing.
-- Namespace root is `Givanov95\TypedHttp\` mapped to `src/TypedHttp/`.
-- Exceptions live in per-layer `Exceptions/` directories (`Requests/Exceptions/RequestException`, `Responses/Exceptions/ResponseException`, top-level `Exceptions/TypedHttpException`).
+- All files `declare(strict_types=1)`; namespace root `Givanov95\TypedHttp\` → `src/TypedHttp/`, tests `Givanov95\TypedHttp\Tests\` → `tests/`.
+- Keep the core free of Laravel; Laravel-only code lives in `src/TypedHttp/Laravel/` and is tested with testbench (`tests/Laravel/`).
+- Avoid PHP 8.3+ syntax: CI runs 8.2, 8.3 and 8.4.
+- New behaviour comes with a test; the `MockClient` is the way to test connectors without network.

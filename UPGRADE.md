@@ -22,7 +22,9 @@
 - **Error responses keep their data.** `RequestException` has `response()`, `status()` and `body()`. Network failures are a separate `ConnectionException`.
 - **GET sends the payload as a query string** (1.x encoded it with the body format, so a JSON GET put JSON into the URL). `GET`/`HEAD`/`OPTIONS` have no body.
 - An empty JSON payload is sent as `{}` (was `[]`).
-- Multipart works. XML is nested and escaped.
+- Multipart works (files as `SplFileInfo` or `['contents' => ..., 'filename' => ...]`). XML is nested and escaped.
+- **The response is parsed by what the server says, not by what the request expected.** 1.x used `ExpectedResponseFormat`; `data()` and the default `createDto()` now follow the response's `Content-Type`. When it is neither JSON nor XML they try the format `Request::accepts()` names (JSON by default), so JSON sent as `text/plain` still decodes. For anything else override `createDto()` (e.g. `return $response->json();`).
+- `Accept` follows the body format: `application/xml` for `BodyFormat::Xml` requests, `application/json` otherwise. Override `accepts()` to change it.
 - Default timeouts (30 s / 10 s). 1.x waited forever.
 - `Certificate` only sets `verify` when a CA bundle is given.
 

@@ -13,6 +13,7 @@ use Givanov95\TypedHttp\Enums\HttpMethod;
 use Givanov95\TypedHttp\Exceptions\ConnectionException;
 use Givanov95\TypedHttp\Exceptions\NetworkException;
 use Givanov95\TypedHttp\Exceptions\RequestException;
+use Givanov95\TypedHttp\Exceptions\TypedHttpException;
 use Givanov95\TypedHttp\Request;
 use Givanov95\TypedHttp\Response;
 use Givanov95\TypedHttp\Testing\MockClient;
@@ -21,7 +22,6 @@ use Givanov95\TypedHttp\Tests\Fixtures\ApiConnector;
 use Givanov95\TypedHttp\Tests\Fixtures\FindSiteRequest;
 use Givanov95\TypedHttp\Tests\Fixtures\ListCitiesRequest;
 use GuzzleHttp\Psr7\Request as Psr7Request;
-use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
 
@@ -120,7 +120,7 @@ final class ConnectorTest extends TestCase
         $this->assertSame('https://other.test/items/1?force=1&x=y', (string) $sent->getUri());
         $this->assertSame('', (string) $sent->getBody());
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(TypedHttpException::class);
         (new class () extends Connector {
         })->withClient($this->mock)->send(new ListCitiesRequest('BG'));
     }
@@ -156,6 +156,39 @@ final class ConnectorTest extends TestCase
         $this->assertSame('c', $sent->getHeaderLine('X-Api'));
         $this->assertSame('request', $sent->getHeaderLine('X-Shared'));
         $this->assertSame('text/csv', $sent->getHeaderLine('Accept'));
+    }
+
+    // Guzzle joins header names that differ only in case, so merging must not go by exact key.
+    public function test_headers_replace_each_other_regardless_of_case(): void
+    {
+        $connector = new class () extends ApiConnector {
+            public function headers(): array
+            {
+                return ['x-trace' => 'connector'];
+            }
+        };
+        $request = new class () extends Request {
+            public function method(): HttpMethod
+            {
+                return HttpMethod::POST;
+            }
+
+            public function endpoint(): string
+            {
+                return 'x';
+            }
+
+            public function headers(): array
+            {
+                return ['content-type' => 'application/vnd.api+json', 'X-Trace' => 'request'];
+            }
+        };
+
+        $connector->withClient($this->mock)->send($request);
+
+        $sent = $this->mock->lastRequest();
+        $this->assertSame('application/vnd.api+json', $sent->getHeaderLine('Content-Type'));
+        $this->assertSame('request', $sent->getHeaderLine('X-Trace'));
     }
 
     public function test_multipart_request(): void
@@ -242,6 +275,22 @@ final class ConnectorTest extends TestCase
         $this->assertSame('/ca.pem', $options['verify']);
     }
 
+    public function test_a_null_timeout_leaves_the_decision_to_the_client(): void
+    {
+        $connector = new class () extends ApiConnector {
+            public function timeout(): ?float
+            {
+                return null;
+            }
+        };
+
+        $connector->withClient($this->mock)->send(new FindSiteRequest());
+
+        $options = $this->mock->lastOptions();
+        $this->assertArrayNotHasKey('timeout', $options);
+        $this->assertSame(10.0, $options['connect_timeout']);
+    }
+
     // Regression for v1 bug #2: the exception had no response, status or body.
     public function test_error_status_throws_with_the_full_response(): void
     {
@@ -295,6 +344,26 @@ final class ConnectorTest extends TestCase
         $dto = (new ApiConnector())->withClient($mock)->send(new ListCitiesRequest('BG'))->dto();
 
         $this->assertSame(['Varna', 'Sofia'], $dto);
+    }
+
+    public function test_default_client_resolver_is_asked_on_every_send(): void
+    {
+        $other = MockClient::make()->push(MockResponse::json([]));
+        $clients = [$this->mock, $other];
+        Connector::useDefaultClient(function () use (&$clients) {
+            return array_shift($clients);
+        });
+
+        try {
+            $connector = new ApiConnector();
+            $connector->send(new FindSiteRequest());
+            $connector->send(new FindSiteRequest());
+
+            $this->assertCount(1, $this->mock->sent());
+            $this->assertCount(1, $other->sent());
+        } finally {
+            Connector::useDefaultClient(null);
+        }
     }
 
     public function test_default_client_resolver_is_used_when_no_client_is_set(): void

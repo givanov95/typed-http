@@ -12,6 +12,9 @@ use Givanov95\TypedHttp\Request;
 use Givanov95\TypedHttp\Support\Payload;
 use Givanov95\TypedHttp\Tests\Fixtures\FindSiteRequest;
 use PHPUnit\Framework\TestCase;
+use SplFileInfo;
+use stdClass;
+use Stringable;
 
 enum Size: string
 {
@@ -20,6 +23,57 @@ enum Size: string
 
 final class PayloadTest extends TestCase
 {
+    public function test_nested_objects_are_normalized_like_top_level_values(): void
+    {
+        $address = new class () {
+            public Size $size = Size::Small;
+
+            public DateTimeImmutable $since;
+
+            public ?string $note = null;
+
+            public function __construct()
+            {
+                $this->since = new DateTimeImmutable('2026-10-03T10:00:00+00:00');
+            }
+        };
+        $code = new class () implements Stringable {
+            public function __toString(): string
+            {
+                return 'BG-1';
+            }
+        };
+        $file = new SplFileInfo(__FILE__);
+        $request = new class ($address, $code, $file) extends Request {
+            /** @var array<string,mixed> */
+            public array $parts;
+
+            public function __construct(public object $address, public Stringable $code, SplFileInfo $file)
+            {
+                $this->parts = ['code' => $code, 'file' => $file, 'empty' => new stdClass()];
+            }
+
+            public function method(): HttpMethod
+            {
+                return HttpMethod::POST;
+            }
+
+            public function endpoint(): string
+            {
+                return '/';
+            }
+        };
+
+        $payload = Payload::collect($request);
+
+        $this->assertSame(['size' => 's', 'since' => '2026-10-03T10:00:00+00:00', 'note' => null], $payload['address']);
+        $this->assertSame('BG-1', $payload['code']);
+        $this->assertSame('BG-1', $payload['parts']['code']);
+        // Files stay objects for the multipart encoder, an empty stdClass stays an object for JSON.
+        $this->assertSame($file, $payload['parts']['file']);
+        $this->assertEquals(new stdClass(), $payload['parts']['empty']);
+    }
+
     public function test_properties_from_parent_classes_are_included(): void
     {
         $payload = Payload::collect(new FindSiteRequest(name: 'Varna'));

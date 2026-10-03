@@ -45,11 +45,11 @@ abstract class Request
     }
 
     /**
-     * Value of the Accept header (null = none).
+     * Value of the Accept header (null = none). Follows the body format: XML in, XML expected; otherwise JSON.
      */
     public function accepts(): ?string
     {
-        return 'application/json';
+        return $this->bodyFormat() === BodyFormat::Xml ? 'application/xml' : 'application/json';
     }
 
     /**

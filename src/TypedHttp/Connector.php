@@ -11,10 +11,10 @@ use Givanov95\TypedHttp\Contracts\Transport;
 use Givanov95\TypedHttp\Enums\HttpMethod;
 use Givanov95\TypedHttp\Exceptions\ConnectionException;
 use Givanov95\TypedHttp\Exceptions\RequestException;
+use Givanov95\TypedHttp\Exceptions\TypedHttpException;
 use Givanov95\TypedHttp\Support\BodyEncoder;
 use Givanov95\TypedHttp\Transport\GuzzleTransport;
 use GuzzleHttp\Psr7\Request as Psr7Request;
-use InvalidArgumentException;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
@@ -27,6 +27,8 @@ abstract class Connector
     private static ?Closure $defaultClient = null;
 
     private ?ClientInterface $client = null;
+
+    private ?ClientInterface $fallbackClient = null;
 
     /**
      * Sets how connectors without an explicit client get one (the Laravel bridge uses this). Null restores Guzzle.
@@ -72,12 +74,18 @@ abstract class Connector
         return [];
     }
 
-    public function timeout(): float
+    /**
+     * Seconds to wait for a response. Null leaves the timeout to the client (its own config or Http::globalOptions).
+     */
+    public function timeout(): ?float
     {
         return 30.0;
     }
 
-    public function connectTimeout(): float
+    /**
+     * Seconds to wait for the connection. Null leaves it to the client.
+     */
+    public function connectTimeout(): ?float
     {
         return 10.0;
     }
@@ -102,7 +110,14 @@ abstract class Connector
 
     public function client(): ClientInterface
     {
-        return $this->client ??= (self::$defaultClient !== null ? (self::$defaultClient)() : new GuzzleTransport());
+        if ($this->client !== null) {
+            return $this->client;
+        }
+
+        // The resolver is asked every time: what it returns may belong to an application that is gone by the next call.
+        return self::$defaultClient !== null
+            ? (self::$defaultClient)()
+            : $this->fallbackClient ??= new GuzzleTransport();
     }
 
     /**
@@ -122,8 +137,10 @@ abstract class Connector
 
         if ($client instanceof Transport) {
             $client = $client->withOptions([
-                'timeout'         => $this->timeout(),
-                'connect_timeout' => $this->connectTimeout(),
+                ...array_filter([
+                    'timeout'         => $this->timeout(),
+                    'connect_timeout' => $this->connectTimeout(),
+                ], static fn (?float $seconds) => $seconds !== null),
                 ...$this->options(),
                 ...($authenticator?->options() ?? []),
             ]);
@@ -178,22 +195,32 @@ abstract class Connector
             $payload = [];
         }
 
-        $headers = [...$this->headers(), ...$request->headers()];
         $body = null;
+        $encoded = null;
 
         if ($method->hasBody() && ($payload !== [] || in_array($method, [HttpMethod::POST, HttpMethod::PUT, HttpMethod::PATCH], true))) {
             $encoded = BodyEncoder::encode($request->bodyFormat(), $payload);
             $body = $encoded->stream;
-            $headers = ['Content-Type' => $encoded->contentType, ...$headers];
+        }
+
+        $psrRequest = new Psr7Request($method->value, $this->uri($request->endpoint(), $query), [], $body);
+
+        // withHeader() replaces whatever differs only in case, so a request header beats a connector header of the same name.
+        foreach ([...$this->headers(), ...$request->headers()] as $name => $value) {
+            $psrRequest = $psrRequest->withHeader($name, $value);
+        }
+
+        if ($encoded !== null && ! $psrRequest->hasHeader('Content-Type')) {
+            $psrRequest = $psrRequest->withHeader('Content-Type', $encoded->contentType);
         }
 
         $accepts = $request->accepts();
 
-        if ($accepts !== null && ! array_key_exists('accept', array_change_key_case($headers, \CASE_LOWER))) {
-            $headers['Accept'] = $accepts;
+        if ($accepts !== null && ! $psrRequest->hasHeader('Accept')) {
+            $psrRequest = $psrRequest->withHeader('Accept', $accepts);
         }
 
-        return new Psr7Request($method->value, $this->uri($request->endpoint(), $query), $headers, $body);
+        return $psrRequest;
     }
 
     /**
@@ -204,7 +231,7 @@ abstract class Connector
         if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $endpoint) === 1) {
             $uri = $endpoint;
         } elseif ($this->baseUrl() === '') {
-            throw new InvalidArgumentException('Endpoint "' . $endpoint . '" is relative but the connector has no base URL.');
+            throw new TypedHttpException('Endpoint "' . $endpoint . '" is relative but the connector has no base URL.');
         } else {
             $uri = rtrim($this->baseUrl(), '/') . '/' . ltrim($endpoint, '/');
         }

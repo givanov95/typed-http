@@ -12,6 +12,11 @@ use SimpleXMLElement;
 
 final class Response
 {
+    private ?string $content = null;
+
+    /** @var array<int,mixed> decoded JSON by the `$associative` flag, so the body is parsed once */
+    private array $decoded = [];
+
     public function __construct(
         private readonly ResponseInterface $response,
         private readonly ?Request $request = null,
@@ -61,15 +66,22 @@ final class Response
         return $this->response->hasHeader($name) ? $this->response->getHeaderLine($name) : null;
     }
 
+    /**
+     * The body as a string. The stream is read once and the result is kept, so this also works for streams that cannot be rewound.
+     */
     public function body(): string
     {
-        $stream = $this->response->getBody();
+        if ($this->content === null) {
+            $stream = $this->response->getBody();
 
-        if ($stream->isSeekable()) {
-            $stream->rewind();
+            if ($stream->isSeekable()) {
+                $stream->rewind();
+            }
+
+            $this->content = (string) $stream;
         }
 
-        return (string) $stream;
+        return $this->content;
     }
 
     /**
@@ -136,7 +148,8 @@ final class Response
 
     /**
      * The body parsed according to its Content-Type: JSON → array, XML → SimpleXMLElement, anything else → string.
-     * An empty body gives null.
+     * When the server names no JSON/XML type (some APIs send JSON as text/plain), the format the request accepts
+     * is tried instead and the raw string is returned if the body does not parse. An empty body gives null.
      */
     public function data(): mixed
     {
@@ -149,7 +162,7 @@ final class Response
         return match (true) {
             str_contains($contentType, 'json') => $this->json(),
             str_contains($contentType, 'xml')  => $this->xml(),
-            default                            => $this->body(),
+            default                            => $this->guessFromAccepts(),
         };
     }
 
@@ -173,8 +186,36 @@ final class Response
         return $this;
     }
 
+    private function guessFromAccepts(): mixed
+    {
+        $accepts = strtolower((string) $this->request?->accepts());
+
+        try {
+            if (str_contains($accepts, 'json')) {
+                $json = $this->json();
+
+                // A bare number or word is more likely plain text than a JSON document.
+                return is_array($json) ? $json : $this->body();
+            }
+
+            if (str_contains($accepts, 'xml')) {
+                return $this->xml();
+            }
+        } catch (ResponseException) {
+            // not in the format the request hoped for
+        }
+
+        return $this->body();
+    }
+
     private function decodeJson(bool $associative): mixed
     {
+        $key = (int) $associative;
+
+        if (array_key_exists($key, $this->decoded)) {
+            return $this->decoded[$key];
+        }
+
         $content = $this->body();
 
         if (trim($content) === '') {
@@ -182,7 +223,7 @@ final class Response
         }
 
         try {
-            return json_decode($content, $associative, 512, \JSON_THROW_ON_ERROR);
+            return $this->decoded[$key] = json_decode($content, $associative, 512, \JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
             throw new ResponseException('The response body is not valid JSON: ' . $e->getMessage(), $this, $e);
         }

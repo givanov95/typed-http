@@ -8,6 +8,7 @@ use Givanov95\TypedHttp\Contracts\Transport;
 use Givanov95\TypedHttp\Exceptions\NetworkException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\ResponseException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
@@ -44,11 +45,19 @@ final class GuzzleTransport implements Transport
         } catch (RequestException $e) {
             // Guzzle only turns a few cURL errors into ConnectException; a reset connection or a failed receive
             // arrives here without a response and is just as much a network error.
-            if ($e->hasResponse()) {
+            if (self::hasResponse($e)) {
                 throw $e;
             }
 
             throw new NetworkException($e->getMessage(), $request, $e);
         }
+    }
+
+    /**
+     * Guzzle 7 keeps the response on RequestException; Guzzle 8 moved it to the ResponseException subclass.
+     */
+    private static function hasResponse(RequestException $e): bool
+    {
+        return method_exists($e, 'hasResponse') ? $e->hasResponse() : $e instanceof ResponseException;
     }
 }
